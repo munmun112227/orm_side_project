@@ -93,9 +93,10 @@ public interface TransactionJpaRepository extends JpaRepository<TransactionEntit
      */
     @Query(value = """
             SELECT
-                TO_CHAR(
-                    TIME '00:00:00' + (FLOOR(EXTRACT(HOUR FROM trans_time) * 4 + EXTRACT(MINUTE FROM trans_time) / 15) * INTERVAL '15 minute'),
-                    'HH24:MI'
+                CONCAT(
+                    LPAD(CAST(EXTRACT(HOUR FROM trans_time) AS VARCHAR), 2, '0'),
+                    ':',
+                    LPAD(CAST(FLOOR(EXTRACT(MINUTE FROM trans_time) / 15) * 15 AS VARCHAR), 2, '0')
                 ) AS slot_start,
                 COUNT(CASE WHEN pos_terminal_no >= 'QPSCL01' AND pos_terminal_no <= 'QPSCL20' THEN 1 END) AS cashier_count,
                 COUNT(CASE WHEN pos_terminal_no >= 'QPSCE01' AND pos_terminal_no <= 'QPSCE20' THEN 1 END) AS self_checkout_count,
