@@ -39,6 +39,8 @@
 
 ### 後端自動化單元測試與雙 ORM 整合測試 (H2 記憶體脫敏模式)
 ```bash
+# 本地 Mac 請確保使用 Java 21 LTS (GitHub Actions 預設即為 Java 21)
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 mvn clean test
 ```
 - **測試結果**：全部通過 (Tests run: 5, Failures: 0, Errors: 0, Skipped: 0)
