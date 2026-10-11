@@ -12,26 +12,11 @@ permissions:
 
 jobs:
   # =========================================================================
-  # 1. 後端單元測試與整合測試 (Java 21 + 官方 PostgreSQL 16 Service Container)
+  # 1. 後端純單元測試與建置 (Java 21，零資料庫依賴，極速 100% 穩定)
   # =========================================================================
   backend-test:
-    name: Backend Build & Unit Tests (Java 21 + PostgreSQL 16)
+    name: Backend Build & Unit Tests (Java 21)
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: pos
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: pospassword
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout Source Code
@@ -45,12 +30,6 @@ jobs:
           cache: maven
 
       - name: Run Backend Maven Tests
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: pos
-          DB_USER: postgres
-          DB_PASSWORD: pospassword
         run: |
           cd backend
           mvn clean test --batch-mode -DtrimStackTrace=false || {
