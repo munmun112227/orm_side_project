@@ -13,6 +13,9 @@
    - 共用 EC2 既有 PostgreSQL (5432)，以專屬 DB Name (`${DB_NAME:pos}`) 進行邏輯隔離，不搶佔宿主機 5432。
 6. **DevSecOps 與 AWS EC2 自動部署**：
    - GitHub Actions 整合 **CodeQL (SAST: Java & JS)** 與 **Aqua Security Trivy (SCA & 容器弱點掃描)**。
+7. **Git 版本控制與敏感資料隔離**：
+   - 配置標準 `.gitignore` 嚴格排除 `ddl_*.sql`、`dml_*.sql`、`import_transactions.sql` 與 284MB 之 `transactions.csv` 等機密資料。
+   - 完成專案 Git 初始化 (`main` 分支) 與初始提交 (`feat: initial commit`)。
 
 ---
 
