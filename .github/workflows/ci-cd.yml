@@ -1,0 +1,182 @@
+name: POS Analytics DevSecOps & CI/CD Pipeline (AWS EC2)
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # =========================================================================
+  # 1. 後端單元測試與建置 (Java 21)
+  # =========================================================================
+  backend-test:
+    name: Backend Build & Unit Tests (Java 21)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up OpenJDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Backend Maven Tests
+        run: |
+          cd backend
+          mvn clean test --batch-mode
+
+  # =========================================================================
+  # 2. 前端依賴檢查與打包建置 (Node 20)
+  # =========================================================================
+  frontend-build:
+    name: Frontend Build & Lint (Node 20)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies & Build
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+  # =========================================================================
+  # 3. Docker 映像檔語法與建置檢驗
+  # =========================================================================
+  docker-verification:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Backend Docker Build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: pos-analytics-backend:ci
+
+      - name: Validate Frontend Docker Build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./frontend/Dockerfile
+          push: false
+          tags: pos-analytics-frontend:ci
+
+  # =========================================================================
+  # 4. 安全弱點掃描 (DevSecOps: CodeQL SAST + Trivy SCA)
+  # =========================================================================
+  security-scan:
+    name: Security Vulnerability Scan (CodeQL & Trivy)
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'java-kotlin', 'javascript-typescript' ]
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up OpenJDK 21 for Java CodeQL
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # 初始化 GitHub CodeQL 靜態原始碼掃描 (SAST)
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild for CodeQL
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+      # 使用 Aqua Security Trivy 進行相依套件與 CVE 弱點掃描
+      - name: Run Trivy Vulnerability Scanner (SCA)
+        if: matrix.language == 'java-kotlin'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  # =========================================================================
+  # 5. 自動化部署至 AWS EC2 (須通過測試、Docker驗證與安全弱點掃描)
+  # =========================================================================
+  deploy-ec2:
+    name: Deploy to AWS EC2
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build, docker-verification, security-scan]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Execute Remote SSH Commands on AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "========== [Step 1] 連線至 AWS EC2 成功 =========="
+            DEPLOY_DIR="/home/${{ secrets.EC2_USER }}/orm_side_project"
+
+            if [ ! -d "$DEPLOY_DIR" ]; then
+              echo "專案目錄不存在，正在從 GitHub Clone..."
+              git clone https://github.com/${{ github.repository }}.git "$DEPLOY_DIR"
+              cd "$DEPLOY_DIR"
+            else
+              echo "專案目錄已存在，正在拉取最新代碼..."
+              cd "$DEPLOY_DIR"
+              git fetch --all
+              git reset --hard origin/${{ github.ref_name }}
+            fi
+
+            echo "========== [Step 2] 執行 Docker Compose 容器重構與啟動 =========="
+            cd "$DEPLOY_DIR/docker"
+            docker compose down || true
+            docker compose up -d --build
+
+            echo "========== [Step 3] 驗證容器運行狀態 =========="
+            docker compose ps
+            echo "========== AWS EC2 部署流程執行完畢！ =========="

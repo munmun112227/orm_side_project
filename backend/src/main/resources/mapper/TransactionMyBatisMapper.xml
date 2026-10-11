@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.pos.analytics.mapper.TransactionMyBatisMapper">
+
+    <!-- 1. 查詢人工機與自助機的總筆數與支付金額總計 -->
+    <select id="queryTerminalOverview" resultType="map">
+        SELECT
+            COUNT(CASE WHEN pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20' THEN 1 END) AS cashier_count,
+            COUNT(CASE WHEN pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20' THEN 1 END) AS self_checkout_count,
+            COALESCE(SUM(CASE WHEN pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20' THEN payment ELSE 0 END), 0) AS cashier_total_payment,
+            COALESCE(SUM(CASE WHEN pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20' THEN payment ELSE 0 END), 0) AS self_checkout_total_payment
+        FROM transactions
+        WHERE trans_date >= #{startDate}
+          AND trans_date &lt;= #{endDate}
+          AND (
+                (pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20')
+             OR (pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20')
+          )
+          AND (training IS NOT TRUE)
+    </select>
+
+    <!-- 2. 查詢假日 13:30~17:30 人工機個別員工交易筆數 -->
+    <select id="queryCashierStaffHolidayTx" resultType="map">
+        SELECT
+            COALESCE(staff_id, 'UNKNOWN') AS identifier,
+            COUNT(*) AS total_tx
+        FROM transactions
+        WHERE trans_date >= #{startDate}
+          AND trans_date &lt;= #{endDate}
+          AND EXTRACT(ISODOW FROM trans_date) IN (6, 7)
+          AND trans_time >= TIME '13:30:00'
+          AND trans_time &lt;= TIME '17:30:00'
+          AND pos_terminal_no >= 'QPSCL01'
+          AND pos_terminal_no &lt;= 'QPSCL20'
+          AND (training IS NOT TRUE)
+        GROUP BY staff_id
+        ORDER BY total_tx DESC
+    </select>
+
+    <!-- 3. 查詢假日 13:30~17:30 自助機個別機台交易筆數 -->
+    <select id="querySelfCheckoutTerminalHolidayTx" resultType="map">
+        SELECT
+            pos_terminal_no AS identifier,
+            COUNT(*) AS total_tx
+        FROM transactions
+        WHERE trans_date >= #{startDate}
+          AND trans_date &lt;= #{endDate}
+          AND EXTRACT(ISODOW FROM trans_date) IN (6, 7)
+          AND trans_time >= TIME '13:30:00'
+          AND trans_time &lt;= TIME '17:30:00'
+          AND pos_terminal_no >= 'QPSCE01'
+          AND pos_terminal_no &lt;= 'QPSCE20'
+          AND (training IS NOT TRUE)
+        GROUP BY pos_terminal_no
+        ORDER BY pos_terminal_no ASC
+    </select>
+
+    <!-- 4. 每 15 分鐘時段交易筆數分析 -->
+    <select id="query15MinuteDistribution" resultType="map">
+        SELECT
+            TO_CHAR(
+                TIME '00:00:00' + (FLOOR(EXTRACT(HOUR FROM trans_time) * 4 + EXTRACT(MINUTE FROM trans_time) / 15) * INTERVAL '15 minute'),
+                'HH24:MI'
+            ) AS slot_start,
+            COUNT(CASE WHEN pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20' THEN 1 END) AS cashier_count,
+            COUNT(CASE WHEN pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20' THEN 1 END) AS self_checkout_count,
+            COUNT(*) AS total_count
+        FROM transactions
+        WHERE trans_date >= #{startDate}
+          AND trans_date &lt;= #{endDate}
+          AND trans_time IS NOT NULL
+          AND (
+                (pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20')
+             OR (pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20')
+          )
+          AND (training IS NOT TRUE)
+        GROUP BY slot_start
+        ORDER BY slot_start ASC
+    </select>
+
+    <!-- 5. 付款別分析 (Tender Type) -->
+    <select id="queryTenderTypeDistribution" resultType="map">
+        SELECT
+            COALESCE(tender_type, 'UNKNOWN') AS tender_type,
+            COUNT(*) AS tx_count,
+            COALESCE(SUM(payment), 0) AS total_amount
+        FROM transactions
+        WHERE trans_date >= #{startDate}
+          AND trans_date &lt;= #{endDate}
+          AND (
+                (pos_terminal_no >= 'QPSCL01' AND pos_terminal_no &lt;= 'QPSCL20')
+             OR (pos_terminal_no >= 'QPSCE01' AND pos_terminal_no &lt;= 'QPSCE20')
+          )
+          AND (training IS NOT TRUE)
+        GROUP BY tender_type
+        ORDER BY tx_count DESC
+    </select>
+
+</mapper>

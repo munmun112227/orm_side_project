@@ -1,0 +1,73 @@
+# =============================================================================
+# 專案版本控制忽略清單 (.gitignore)
+# =============================================================================
+
+# 1. 資料庫結構 (DDL) 與資料操作 (DML) 腳本 (依需求嚴格排除)
+*ddl*.sql
+*DDL*.sql
+*dml*.sql
+*DML*.sql
+import_transactions.sql
+export_pg_data.py
+*.sql
+
+# 2. 交易明細與大型資料檔案 (防止門市機密外洩)
+transactions.csv
+*.csv
+*.xlsx
+*.xls
+
+# 3. Java & Maven 建置暫存產物
+backend/target/
+**/target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# 4. Vue & Node 前端建置產物與套件
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+**/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 5. 作業系統暫存檔
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 6. IDE 與編輯器設定檔
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# 7. 日誌檔案
+*.log
+logs/
+backend/logs/
+
+# 8. 本機環境設定與 Secrets 憑證
+.env
+.env.local
+*.pem
+*.key
+backend/src/main/resources/application-local.properties
